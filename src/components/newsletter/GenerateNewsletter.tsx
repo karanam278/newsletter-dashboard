@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useServices } from "@/context/ServicesContext";
 import { useNewsletter, NewsletterData } from "@/context/NewsletterContext";
 import { useNewsletterHistory } from "@/context/NewsletterHistoryContext";
@@ -45,9 +45,8 @@ export default function GenerateNewsletter() {
     reset,
   } = useNewsletter();
 
-  const { addEntry, updateEntry } = useNewsletterHistory();
+  const { addEntry } = useNewsletterHistory();
   const [copied, setCopied] = useState(false);
-  const historyIdRef = useRef<string>("");
 
   const applyResponse = (raw: unknown) => {
     const structured = parseResponse(raw);
@@ -62,6 +61,18 @@ export default function GenerateNewsletter() {
     }
   };
 
+  const saveToHistory = (nl: NewsletterData | null, rb: string, tid: string, st: "generated" | "proceeded") => {
+    addEntry({
+      id: Date.now().toString(),
+      service: selectedService,
+      topic: topic.trim(),
+      newsletter: nl,
+      rawFallback: rb,
+      templateId: tid,
+      status: st,
+    });
+  };
+
   const handleGenerate = async () => {
     if (!selectedService || !topic.trim()) return;
     setStatus("loading");
@@ -74,7 +85,7 @@ export default function GenerateNewsletter() {
 
       if (!webhookUrl) {
         await new Promise((r) => setTimeout(r, 1200));
-        const mockNewsletter = {
+        const mock: NewsletterData = {
           subjectLine: `Why Is Turkey the Top ${selectedService} Destination?`,
           preheader: `Discover what makes Turkey a premier choice for ${selectedService}.`,
           headerTitle: `Turkey: The Premier ${selectedService} Destination`,
@@ -86,18 +97,8 @@ export default function GenerateNewsletter() {
           closing: `Thank you for reading.\n\nWarm regards,\nThe Team`,
           footerNote: `You're receiving this because you subscribed to our Health & Wellness Newsletter.`,
         };
-        setNewsletter(mockNewsletter);
-        const mockId = Date.now().toString();
-        historyIdRef.current = mockId;
-        addEntry({
-          id: mockId,
-          service: selectedService,
-          topic: topic.trim(),
-          newsletter: mockNewsletter,
-          rawFallback: "",
-          templateId: "",
-          status: "generated",
-        });
+        setNewsletter(mock);
+        saveToHistory(mock, "", "", "generated");
         setStatus("success");
         return;
       }
@@ -112,17 +113,7 @@ export default function GenerateNewsletter() {
       const raw = await res.json();
       applyResponse(raw);
       const structured = parseResponse(raw);
-      const entryId = Date.now().toString();
-      historyIdRef.current = entryId;
-      addEntry({
-        id: entryId,
-        service: selectedService,
-        topic: topic.trim(),
-        newsletter: structured,
-        rawFallback: structured ? "" : JSON.stringify(raw, null, 2),
-        templateId: "",
-        status: "generated",
-      });
+      saveToHistory(structured, structured ? "" : JSON.stringify(raw, null, 2), "", "generated");
       setStatus("success");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Something went wrong");
@@ -184,11 +175,9 @@ export default function GenerateNewsletter() {
         if (!res.ok) throw new Error(`Failed to send: ${res.statusText}`);
         const raw = await res.json();
         const data = Array.isArray(raw) ? raw[0] : raw;
-        const id = data?.["template id"] || data?.templateId || data?.template_id || "";
-        setTemplateId(id);
-        if (historyIdRef.current) {
-          updateEntry(historyIdRef.current, { templateId: id, status: "proceeded" });
-        }
+        const tid: string = data?.["template id"] || data?.templateId || data?.template_id || "";
+        setTemplateId(tid);
+        saveToHistory(newsletter, rawFallback, tid, "proceeded");
       }
       setStatus("proceeded");
     } catch (err) {
@@ -272,7 +261,6 @@ export default function GenerateNewsletter() {
 
         {/* Right: output */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">Generated Content</h2>
             {hasContent && (
@@ -290,7 +278,6 @@ export default function GenerateNewsletter() {
             )}
           </div>
 
-          {/* Email preview area */}
           <div className="flex-1 overflow-auto min-h-64 max-h-[60vh]">
             {status === "idle" && (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 py-16">
@@ -326,7 +313,6 @@ export default function GenerateNewsletter() {
             )}
           </div>
 
-          {/* Proceeded success banner */}
           {status === "proceeded" && (
             <div className="border-t border-gray-100 pt-4 space-y-3">
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
@@ -344,7 +330,6 @@ export default function GenerateNewsletter() {
                       <button
                         onClick={() => { navigator.clipboard.writeText(templateId); }}
                         className="shrink-0 p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                        title="Copy template ID"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -354,16 +339,12 @@ export default function GenerateNewsletter() {
                   )}
                 </div>
               </div>
-              <button
-                onClick={reset}
-                className="w-full py-2.5 text-sm text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={reset} className="w-full py-2.5 text-sm text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 Generate another newsletter
               </button>
             </div>
           )}
 
-          {/* Proceed / Reject actions */}
           {status === "success" && (
             <div className="border-t border-gray-100 pt-4 flex gap-3">
               <button
@@ -387,7 +368,6 @@ export default function GenerateNewsletter() {
             </div>
           )}
 
-          {/* Retry prompt (shown after Reject) */}
           {status === "rejected" && (
             <div className="border-t border-gray-100 pt-4 space-y-3">
               <div className="flex items-start gap-2">
@@ -398,7 +378,7 @@ export default function GenerateNewsletter() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-800">What would you like to change?</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Describe what to improve and we'll regenerate it.</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Describe what to improve and we&apos;ll regenerate it.</p>
                 </div>
               </div>
               <textarea

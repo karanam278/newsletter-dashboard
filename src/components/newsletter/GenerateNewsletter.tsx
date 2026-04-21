@@ -87,7 +87,10 @@ export default function GenerateNewsletter() {
           footerNote: `You're receiving this because you subscribed to our Health & Wellness Newsletter.`,
         };
         setNewsletter(mockNewsletter);
-        const id = addEntry({
+        const mockId = Date.now().toString();
+        historyIdRef.current = mockId;
+        addEntry({
+          id: mockId,
           service: selectedService,
           topic: topic.trim(),
           newsletter: mockNewsletter,
@@ -95,7 +98,6 @@ export default function GenerateNewsletter() {
           templateId: "",
           status: "generated",
         });
-        historyIdRef.current = id;
         setStatus("success");
         return;
       }
@@ -110,7 +112,10 @@ export default function GenerateNewsletter() {
       const raw = await res.json();
       applyResponse(raw);
       const structured = parseResponse(raw);
-      const id = addEntry({
+      const entryId = Date.now().toString();
+      historyIdRef.current = entryId;
+      addEntry({
+        id: entryId,
         service: selectedService,
         topic: topic.trim(),
         newsletter: structured,
@@ -118,7 +123,6 @@ export default function GenerateNewsletter() {
         templateId: "",
         status: "generated",
       });
-      historyIdRef.current = id;
       setStatus("success");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Something went wrong");

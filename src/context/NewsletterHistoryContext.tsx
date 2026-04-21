@@ -16,7 +16,7 @@ export interface NewsletterHistoryItem {
 
 interface HistoryContextValue {
   history: NewsletterHistoryItem[];
-  addEntry: (entry: Omit<NewsletterHistoryItem, "id" | "createdAt">) => string;
+  addEntry: (entry: Omit<NewsletterHistoryItem, "createdAt">) => void;
   updateEntry: (id: string, patch: Partial<NewsletterHistoryItem>) => void;
   removeEntry: (id: string) => void;
   clearHistory: () => void;
@@ -41,10 +41,9 @@ export function NewsletterHistoryProvider({ children }: { children: ReactNode })
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch {}
   };
 
-  const addEntry = (entry: Omit<NewsletterHistoryItem, "id" | "createdAt">) => {
+  const addEntry = (entry: Omit<NewsletterHistoryItem, "createdAt">) => {
     const newItem: NewsletterHistoryItem = {
       ...entry,
-      id: Date.now().toString(),
       createdAt: new Date().toISOString(),
     };
     setHistory((prev) => {
@@ -52,7 +51,6 @@ export function NewsletterHistoryProvider({ children }: { children: ReactNode })
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch {}
       return updated;
     });
-    return newItem.id;
   };
 
   const updateEntry = (id: string, patch: Partial<NewsletterHistoryItem>) => {

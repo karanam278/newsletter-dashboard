@@ -16,7 +16,7 @@ export interface NewsletterHistoryItem {
 
 interface HistoryContextValue {
   history: NewsletterHistoryItem[];
-  addEntry: (entry: Omit<NewsletterHistoryItem, "id" | "createdAt">) => void;
+  addEntry: (entry: Omit<NewsletterHistoryItem, "id" | "createdAt">) => string;
   updateEntry: (id: string, patch: Partial<NewsletterHistoryItem>) => void;
   removeEntry: (id: string) => void;
   clearHistory: () => void;

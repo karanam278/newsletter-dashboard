@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   LineChart,
@@ -116,13 +117,13 @@ export default function ResendDashboard() {
   const [leadCounts, setLeadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    fetch("/api/supabase/campaigns")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.error) {
-          setCampaigns(data.campaigns || []);
-          setLeadCounts(data.leadCounts || {});
-        }
+    Promise.all([
+      fetch("/api/supabase/newsletter-campaigns").then((r) => r.json()),
+      fetch("/api/supabase/lead-counts").then((r) => r.json()),
+    ])
+      .then(([campaignsData, leadCountsData]) => {
+        if (Array.isArray(campaignsData)) setCampaigns(campaignsData);
+        if (!leadCountsData.error) setLeadCounts(leadCountsData || {});
       })
       .catch(() => {});
   }, []);
@@ -432,58 +433,92 @@ export default function ResendDashboard() {
       </div>
 
       {/* Currently Running Newsletters */}
-      {campaigns.length > 0 && (
-        <div className="mt-6 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <div className="flex items-center gap-2 mb-5">
-            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-            <p className="text-sm font-semibold text-gray-700">Currently Running Newsletters</p>
-            <span className="ml-auto text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{campaigns.length} active</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {campaigns.map((c) => {
-              const table = String(c.table_name || "");
-              const leads = leadCounts[table] ?? 0;
-              const templateId = String(c.template_id || "");
-              const dailySent = Number(c.limit_for_daily || 0);
-              const daysToComplete = dailySent > 0 ? Math.ceil(leads / dailySent) : 0;
-              return (
-                <div key={String(c.id)} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors">
-                  {/* Subject */}
-                  <p className="text-sm font-semibold text-gray-800 leading-snug mb-3 line-clamp-2">
-                    {String(c.subject_line || "—")}
-                  </p>
+      {(() => {
+        const activeCampaigns = campaigns
+          .map((c) => {
+            const table = String(c.subscribers || "");
+            const leads = leadCounts[table] ?? 0;
+            const dailySent = Number(c.daily_limit || 0);
+            const daysToComplete = dailySent > 0 ? Math.ceil(leads / dailySent) : 0;
+            const completionLabel = dailySent > 0
+              ? new Date(Date.now() + daysToComplete * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+              : null;
+            return {
+              id: String(c.id),
+              title: String(c.campaign_name || c.subject_line || "—"),
+              templateId: String(c.template_id || ""),
+              table,
+              leads,
+              dailySent,
+              daysToComplete,
+              completionLabel,
+              isCompleted: leads <= 0,
+            };
+          })
+          .filter((c) => !c.isCompleted);
 
-                  {/* Template ID */}
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-                    </svg>
-                    <span className="text-xs font-mono text-gray-500 truncate" title={templateId}>
-                      {templateId.slice(0, 8)}…{templateId.slice(-4)}
-                    </span>
-                  </div>
+        return (
+          <div className="mt-6 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-5">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+              <p className="text-sm font-semibold text-gray-700">Currently Running Newsletters</p>
+              <span className="ml-auto text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{activeCampaigns.length} active</span>
+            </div>
 
-                  {/* Stats row */}
-                  <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg font-medium">
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            {activeCampaigns.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <p className="text-sm text-gray-500 mb-3">No newsletters are currently running.</p>
+                <Link
+                  href="/newsletter/campaign"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
+                >
+                  + Create a campaign
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeCampaigns.map((c) => (
+                  <div
+                    key={c.id}
+                    className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors"
+                  >
+                    {/* Title */}
+                    <p className="text-sm font-semibold text-gray-800 leading-snug mb-3 line-clamp-2">
+                      {c.title}
+                    </p>
+
+                    {/* Template ID */}
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                       </svg>
-                      {leads.toLocaleString()} leads · {table}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-lg font-medium">
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      {dailySent}/day · ~{daysToComplete}d left
-                    </span>
+                      <span className="text-xs font-mono text-gray-500 truncate" title={c.templateId}>
+                        {c.templateId.slice(0, 8)}…{c.templateId.slice(-4)}
+                      </span>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg font-medium">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        {c.leads.toLocaleString()} leads · {c.table}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-lg font-medium">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {c.dailySent}/day · ~{c.daysToComplete}d left · ~{c.completionLabel}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
